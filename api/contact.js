@@ -65,6 +65,12 @@ function getResendClient() {
 
 function buildResendPayload(payload) {
   const toEmail = process.env.CONTACT_TO_EMAIL || 'travellerlonely194@gmail.com';
+  const fromEmail = process.env.RESEND_FROM_EMAIL;
+
+  if (!fromEmail) {
+    throw new Error('Missing RESEND_FROM_EMAIL. Set a verified Resend sender email in Vercel.');
+  }
+
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
       <h2 style="margin: 0 0 16px;">New portfolio contact message</h2>
@@ -77,7 +83,7 @@ function buildResendPayload(payload) {
   `;
 
   return {
-    from: process.env.RESEND_FROM_EMAIL || 'Portfolio Contact <onboarding@resend.dev>',
+    from: fromEmail,
     to: toEmail,
     reply_to: payload.email,
     subject: `New contact message from ${payload.name}`,
@@ -96,7 +102,7 @@ function buildResendPayload(payload) {
 async function sendContactEmail(payload) {
   const resend = getResendClient();
   if (!resend) {
-    throw new Error('Missing RESEND_API_KEY');
+    throw new Error('Missing RESEND_API_KEY. Add it to the Vercel environment variables.');
   }
 
   const emailPayload = buildResendPayload(payload);
@@ -151,6 +157,7 @@ module.exports = async function handler(req, res) {
     const result = await sendFn(emailPayload);
 
     if (result && result.error) {
+      console.error('[contact] Resend returned error:', result.error);
       return res.status(500).json({ message: 'Unable to send your message. Please try again.' });
     }
 
@@ -159,6 +166,7 @@ module.exports = async function handler(req, res) {
       message: 'Message sent successfully! I\'ll get back to you soon.'
     });
   } catch (error) {
+    console.error('[contact] Email send failed:', error?.message || error);
     return res.status(500).json({ message: 'Unable to send your message. Please try again.' });
   }
 };

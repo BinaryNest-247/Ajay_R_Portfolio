@@ -42,6 +42,7 @@ test('returns 400 when required form fields are missing', async () => {
 test('sends a valid message through the email service', async () => {
   process.env.RESEND_API_KEY = 'test-key';
   process.env.CONTACT_TO_EMAIL = 'travellerlonely194@gmail.com';
+  process.env.RESEND_FROM_EMAIL = 'portfolio@resend.dev';
 
   const sendCalls = [];
   const originalSend = global.__RESEND_SEND__;
