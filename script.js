@@ -386,25 +386,101 @@ galleryThumbs.forEach((thumb, index) => {
 
 const portrait = document.querySelector('.hero-portrait');
 const portraitOverlay = document.querySelector('.hero-portrait-overlay');
+const portraitWatermark = document.querySelector('.portrait-watermark');
+const portraitWrap = document.querySelector('.hero-portrait-wrap');
+
 const preventImageInteraction = event => {
   event.preventDefault();
   event.stopPropagation();
+  return false;
 };
 
-if (portrait) {
-  portrait.draggable = false;
-  portrait.addEventListener('dragstart', preventImageInteraction);
-  portrait.addEventListener('mousedown', preventImageInteraction);
-  portrait.addEventListener('contextmenu', preventImageInteraction);
-  portrait.addEventListener('selectstart', preventImageInteraction);
+const enhanceWatermark = () => {
+  if (portraitWatermark) {
+    portraitWatermark.classList.add('capture-mode');
+    window.setTimeout(() => {
+      portraitWatermark.classList.remove('capture-mode');
+    }, 2500);
+  }
+};
+
+// Detect potential screenshot attempts (keyboard shortcuts and screen capture APIs)
+const detectScreenCapture = () => {
+  if (portraitWrap) {
+    enhanceWatermark();
+  }
+};
+
+// Listen for Print Screen, Shift+S, and other common screenshot key combinations
+window.addEventListener('keydown', event => {
+  if (
+    event.key === 'PrintScreen' ||
+    (event.shiftKey && event.key === 's') ||
+    (event.shiftKey && event.key === 'S') ||
+    (event.ctrlKey && event.shiftKey && (event.key === 's' || event.key === 'S'))
+  ) {
+    detectScreenCapture();
+  }
+});
+
+// Detect screen capture via Screen Capture API (when available and permission granted)
+if (navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function') {
+  const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
+  navigator.mediaDevices.getDisplayMedia = function(...args) {
+    detectScreenCapture();
+    return originalGetDisplayMedia.apply(this, args);
+  };
 }
 
+// Protection for portrait image element
+if (portrait) {
+  portrait.draggable = false;
+  portrait.setAttribute('draggable', 'false');
+  portrait.addEventListener('dragstart', preventImageInteraction, true);
+  portrait.addEventListener('dragend', preventImageInteraction, true);
+  portrait.addEventListener('drag', preventImageInteraction, true);
+  portrait.addEventListener('mousedown', preventImageInteraction, true);
+  portrait.addEventListener('contextmenu', preventImageInteraction, true);
+  portrait.addEventListener('selectstart', preventImageInteraction, true);
+  portrait.addEventListener('copy', preventImageInteraction, true);
+  portrait.addEventListener('cut', preventImageInteraction, true);
+  portrait.addEventListener('paste', preventImageInteraction, true);
+  portrait.addEventListener('pointerdown', preventImageInteraction, true);
+  portrait.addEventListener('touchstart', preventImageInteraction, true);
+  portrait.addEventListener('touchmove', preventImageInteraction, true);
+  portrait.style.WebkitUserDrag = 'none';
+  portrait.style.WebkitUserSelect = 'none';
+  portrait.style.cursor = 'default';
+}
+
+// Protection for portrait overlay
 if (portraitOverlay) {
-  portraitOverlay.addEventListener('contextmenu', preventImageInteraction);
-  portraitOverlay.addEventListener('dragstart', preventImageInteraction);
-  portraitOverlay.addEventListener('mousedown', preventImageInteraction);
-  portraitOverlay.addEventListener('selectstart', preventImageInteraction);
-  portraitOverlay.addEventListener('touchstart', preventImageInteraction);
+  portraitOverlay.addEventListener('contextmenu', preventImageInteraction, true);
+  portraitOverlay.addEventListener('dragstart', preventImageInteraction, true);
+  portraitOverlay.addEventListener('dragend', preventImageInteraction, true);
+  portraitOverlay.addEventListener('drag', preventImageInteraction, true);
+  portraitOverlay.addEventListener('mousedown', preventImageInteraction, true);
+  portraitOverlay.addEventListener('selectstart', preventImageInteraction, true);
+  portraitOverlay.addEventListener('copy', preventImageInteraction, true);
+  portraitOverlay.addEventListener('cut', preventImageInteraction, true);
+  portraitOverlay.addEventListener('paste', preventImageInteraction, true);
+  portraitOverlay.addEventListener('pointerdown', preventImageInteraction, true);
+  portraitOverlay.addEventListener('touchstart', preventImageInteraction, true);
+  portraitOverlay.addEventListener('touchmove', preventImageInteraction, true);
+  portraitOverlay.style.WebkitUserDrag = 'none';
+  portraitOverlay.style.WebkitUserSelect = 'none';
+  portraitOverlay.style.cursor = 'default';
+}
+
+// Prevent image saving and context menu for portrait wrapper
+if (portraitWrap) {
+  portraitWrap.addEventListener('contextmenu', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
+  }, true);
+  portraitWrap.addEventListener('copy', preventImageInteraction, true);
+  portraitWrap.addEventListener('cut', preventImageInteraction, true);
 }
 
 scrollButtons.forEach(button => {
@@ -440,18 +516,75 @@ siteNavLinks.forEach(link => {
 });
 
 if (contactForm) {
-  contactForm.addEventListener('submit', event => {
+  const submitButton = contactForm.querySelector('button[type="submit"]');
+  const status = contactForm.querySelector('.form-status');
+
+  const setStatus = (message, type = 'info') => {
+    if (!status) return;
+    status.textContent = message;
+    status.dataset.type = type;
+    status.style.color = type === 'success' ? '#8de9b5' : type === 'error' ? '#ff8f8f' : 'var(--text-muted)';
+  };
+
+  contactForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+
     const name = contactForm.name.value.trim();
     const email = contactForm.email.value.trim();
     const message = contactForm.message.value.trim();
-    const status = contactForm.querySelector('.form-status');
-    if (!name || !validateEmail(email) || !message) {
-      status.textContent = 'Please complete all fields with valid information.';
+
+    if (!name) {
+      setStatus('Name is required.', 'error');
+      contactForm.name.focus();
       return;
     }
-    contactForm.reset();
-    status.textContent = 'Thank you. Your message is validated and ready for backend integration.';
+
+    if (!validateEmail(email)) {
+      setStatus('Please provide a valid email address.', 'error');
+      contactForm.email.focus();
+      return;
+    }
+
+    if (!message) {
+      setStatus('Message is required.', 'error');
+      contactForm.message.focus();
+      return;
+    }
+
+    if (submitButton.disabled) {
+      return;
+    }
+
+    submitButton.disabled = true;
+    submitButton.setAttribute('aria-busy', 'true');
+    const originalText = submitButton.textContent;
+    submitButton.textContent = 'Sending...';
+    setStatus('Sending your message...', 'info');
+
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name, email, message })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Unable to send your message. Please try again.');
+      }
+
+      contactForm.reset();
+      setStatus('Message sent successfully! I\'ll get back to you soon.', 'success');
+    } catch (error) {
+      setStatus(error.message || 'Unable to send your message. Please try again.', 'error');
+    } finally {
+      submitButton.disabled = false;
+      submitButton.setAttribute('aria-busy', 'false');
+      submitButton.textContent = originalText;
+    }
   });
 }
 
@@ -463,6 +596,34 @@ const handleRouteChange = () => {
   applySection(id, { scrollTo: true });
 };
 
+// Apply protection to project gallery and other important images
+const protectImageAssets = () => {
+  // Protect gallery and featured images
+  document.querySelectorAll('.featured-image img, .gallery-frame img, .gallery-thumb img').forEach(img => {
+    img.draggable = false;
+    img.setAttribute('draggable', 'false');
+    img.addEventListener('dragstart', preventImageInteraction, true);
+    img.addEventListener('contextmenu', preventImageInteraction, true);
+    img.addEventListener('mousedown', preventImageInteraction, true);
+    img.style.WebkitUserDrag = 'none';
+    img.style.WebkitUserSelect = 'none';
+  });
+
+  // Protect project cards containing images
+  document.querySelectorAll('.project-card, .featured-card').forEach(card => {
+    card.addEventListener('dragstart', event => {
+      if (event.target.tagName === 'IMG') {
+        preventImageInteraction(event);
+      }
+    }, true);
+    card.addEventListener('contextmenu', event => {
+      if (event.target.tagName === 'IMG') {
+        preventImageInteraction(event);
+      }
+    }, true);
+  });
+};
+
 window.addEventListener('load', () => {
   const id = getRouteId();
   if (location.hash !== `#${id}`) {
@@ -470,6 +631,9 @@ window.addEventListener('load', () => {
   }
   applySection(id, { scrollTo: true });
   if (galleryFrameImage) showGalleryItem(0);
+  
+  // Apply image protection after DOM is fully loaded
+  window.setTimeout(protectImageAssets, 100);
 });
 
 window.addEventListener('hashchange', handleRouteChange);
